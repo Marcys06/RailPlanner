@@ -16,89 +16,54 @@ public sealed class RailProject
     public List<CommercialLine> CommercialLines { get; set; } = new();
     public List<TrainRun> Trains { get; set; } = new();
 }
-
 public sealed class Station
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Code { get; set; } = "NEW";
-    public string Name { get; set; } = "New station";
-    public int X { get; set; }
-    public int Y { get; set; }
-    public int Tracks { get; set; } = 2;
-    public StationType Type { get; set; } = StationType.Local;
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Code { get; set; } = "NEW"; public string Name { get; set; } = "New station";
+    public int X { get; set; } public int Y { get; set; } public int Tracks { get; set; } = 2; public StationType Type { get; set; } = StationType.Local;
 }
-
 public sealed class RailwayLine
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Number { get; set; } = "LK000";
-    public string Name { get; set; } = "New line";
-    public List<RailSection> Sections { get; set; } = new();
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Number { get; set; } = "LK000"; public string Name { get; set; } = "New line"; public List<RailSection> Sections { get; set; } = new();
 }
-
 public sealed class RailSection
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid FromStationId { get; set; }
-    public Guid ToStationId { get; set; }
-    public List<RailTrack> Tracks { get; set; } = new();
-    public List<MapPoint> Geometry { get; set; } = new();
+    public Guid Id { get; set; } = Guid.NewGuid(); public Guid FromStationId { get; set; } public Guid ToStationId { get; set; }
+    public List<RailTrack> Tracks { get; set; } = new(); public List<MapPoint> Geometry { get; set; } = new();
 }
-
 public sealed class RailTrack
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Name { get; set; } = "1";
-    public TrackDirection Direction { get; set; } = TrackDirection.Forward;
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Name { get; set; } = "1"; public TrackDirection Direction { get; set; } = TrackDirection.Forward;
 }
-
 public sealed class MapPoint
 {
-    public int X { get; set; }
-    public int Y { get; set; }
-    public MapPoint() { }
-    public MapPoint(int x, int y) { X = x; Y = y; }
+    public int X { get; set; } public int Y { get; set; } public MapPoint() { } public MapPoint(int x, int y) { X = x; Y = y; }
 }
-
 public sealed class CommercialLine
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Code { get; set; } = "IC";
-    public string Name { get; set; } = "InterCity";
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Code { get; set; } = "IC"; public string Name { get; set; } = "InterCity";
 }
-
 public sealed class TrainRun
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Number { get; set; } = "IC 001";
-    public string Name { get; set; } = "New run";
-    public Guid? CommercialLineId { get; set; }
-    public List<TimetableEntry> Timetable { get; set; } = new();
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Number { get; set; } = "IC 001"; public string Name { get; set; } = "New run";
+    public Guid? CommercialLineId { get; set; } public List<TimetableEntry> Timetable { get; set; } = new();
 }
-
 public sealed class TimetableEntry
 {
     public Guid StationId { get; set; }
     public StopKind Kind { get; set; } = StopKind.Stop;
     public string Arrival { get; set; } = "--:--";
     public string Departure { get; set; } = "--:--";
+    // Optional explicit track for the next section. Null means analyzer chooses the first track in the required direction.
+    public Guid? TrackId { get; set; }
 }
-
 public sealed record OccupancyInterval(Guid TrackId, Guid TrainId, string TrainNumber, TimeSpan Start, TimeSpan End, Guid SectionId);
 public sealed record Conflict(string Number, string Message, Guid TrackId, Guid TrainA, Guid TrainB, TimeSpan Start, TimeSpan End);
 public sealed record StationLoad(Guid StationId, int MaximumUsed, int Capacity);
 public sealed class AnalysisResult
 {
-    public List<Conflict> Conflicts { get; } = new();
-    public List<StationLoad> StationLoads { get; } = new();
-    public List<string> Warnings { get; } = new();
+    public List<Conflict> Conflicts { get; } = new(); public List<StationLoad> StationLoads { get; } = new(); public List<string> Warnings { get; } = new();
 }
-
 public static class ProjectJson
 {
-    public static readonly System.Text.Json.JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    public static readonly System.Text.Json.JsonSerializerOptions Options = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 }
