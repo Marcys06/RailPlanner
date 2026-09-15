@@ -4,6 +4,8 @@ RailPlanner is a static railway-network planner for OpenTTD projects. It is inte
 
 The UI follows the dark, technical dispatcher style of RailDispatchMono and is built with MonoGame/DesktopGL on .NET 9.
 
+The application UI and project documentation use English and ASCII-only interface text so the default SpriteFont does not depend on locale-specific characters.
+
 ## Current MVP
 
 - Large logical map (default 1000 x 1000).
@@ -41,6 +43,7 @@ The UI follows the dark, technical dispatcher style of RailDispatchMono and is b
 Requires the .NET 9 SDK. From the repository root:
 
 ```text
+dotnet tool restore
 dotnet restore
 dotnet run
 ```
