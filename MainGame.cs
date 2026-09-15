@@ -24,12 +24,11 @@ public sealed class MainGame : Game
     }
     void ClickSidebar(Vector2 p)
     {
-        if(p.Y<230)return;
-        var y=250;
+        var y=104;
         foreach(var line in project.Lines){
             if(p.Y>=y&&p.Y<y+24){selectedLine=line.Id;selectedSection=null;mode="LINE VIEW";status=$"LINE {line.Number} SELECTED";return;}
             y+=26;
-            if(selectedLine==line.Id){for(var i=0;i<line.Sections.Count;i++){if(p.Y>=y&&p.Y<y+34){selectedLine=line.Id;selectedSection=line.Sections[i].Id;mode="LINE VIEW";status=$"SELECTED {line.Number}|{line.Sections[i].Number}";return;}y+=36;}}
+            if(selectedLine==line.Id){var route=LineRoute(line);if(route.Count>0)y+=30;foreach(var sec in line.Sections){if(p.Y>=y&&p.Y<y+34){selectedLine=line.Id;selectedSection=sec.Id;mode="LINE VIEW";status=$"SELECTED {line.Number}|{sec.Number}";return;}y+=36;}}
             y+=8;
         }
     }
