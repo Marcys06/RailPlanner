@@ -145,7 +145,7 @@ public sealed class AddNewMenu : DrawableGameComponent
             height);
     }
 
-    protected override void Draw(GameTime gameTime)
+    public override void Draw(GameTime gameTime)
     {
         if (!open) return;
 
