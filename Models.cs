@@ -33,7 +33,9 @@ public sealed class RailSection
 }
 public sealed class RailTrack
 {
-    public Guid Id { get; set; } = Guid.NewGuid(); public string Name { get; set; } = "1"; public TrackDirection Direction { get; set; } = TrackDirection.Forward;
+    public Guid Id { get; set; } = Guid.NewGuid(); public string Name { get; set; } = "1";
+    public TrackDirection Direction { get; set; } = TrackDirection.Forward;
+    public int Vmax { get; set; } = 120;
 }
 public sealed class MapPoint
 {
