@@ -27,7 +27,8 @@ public sealed class RailwayLine
 }
 public sealed class RailSection
 {
-    public Guid Id { get; set; } = Guid.NewGuid(); public Guid FromStationId { get; set; } public Guid ToStationId { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid(); public int Number { get; set; }
+    public Guid FromStationId { get; set; } public Guid ToStationId { get; set; }
     public List<RailTrack> Tracks { get; set; } = new(); public List<MapPoint> Geometry { get; set; } = new();
 }
 public sealed class RailTrack
@@ -53,7 +54,6 @@ public sealed class TimetableEntry
     public StopKind Kind { get; set; } = StopKind.Stop;
     public string Arrival { get; set; } = "--:--";
     public string Departure { get; set; } = "--:--";
-    // Optional explicit track for the next section. Null means analyzer chooses the first track in the required direction.
     public Guid? TrackId { get; set; }
 }
 public sealed record OccupancyInterval(Guid TrackId, Guid TrainId, string TrainNumber, TimeSpan Start, TimeSpan End, Guid SectionId);
