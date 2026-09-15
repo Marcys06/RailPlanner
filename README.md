@@ -23,6 +23,20 @@ The application UI and project documentation use English and ASCII-only interfac
 - Informational station track-load calculation; station occupancy does not create conflicts.
 - One project file: `project.railplanner` (JSON).
 
+## Unified editor workflow
+
+All object creation and editing uses the same modal-editor pattern. The station editor is the visual baseline for the other editors.
+
+- **Station**: `ADD / EDIT STATION` dialog with code, name, tracks and type.
+- **Railway line**: `ADD / EDIT RAILWAY LINE` dialog with number and name.
+- **Railway section**: `ADD / EDIT RAILWAY SECTION` dialog with from/to stations, segment number and directional track names.
+- **Train**: `ADD / EDIT TRAIN` dialog with number, name, commercial line and a full timetable editor.
+- Existing objects are edited in the same dialog used for creation, with the current values prefilled.
+- `SAVE` commits the draft object; `CANCEL` discards the draft.
+- Timetable stations are selected through a dedicated station picker instead of requiring manual station identifiers.
+
+This keeps object creation consistent: every new object is configured in a form before it is committed to the project. Map placement remains the first step for a new station because its coordinates come from the map click.
+
 ## Line browser
 
 Press `F8` to open the line view. Click a railway line in the left panel to expand it and see its ordered segments. Each segment has its own identifier in the form `LINE|SEGMENT`, for example:
@@ -43,17 +57,21 @@ Selecting a segment highlights that exact section on the schematic map. The full
 | Key | Action |
 |---|---|
 | F1 | Select mode |
-| F2 | Add station |
+| F2 | Add station, then open station details |
 | F3 | Create railway section between two stations |
-| F4 | Create a test train run |
+| F4 | Create a train in the train editor |
 | F5 | Save `project.railplanner` |
 | F6 | Load `project.railplanner` |
 | F7 | Analyze timetable |
 | F8 | Open line browser |
+| F9 | Edit selected station |
+| L | Open railway line editor |
+| E | Edit selected object |
+| N | Add section to selected line |
 | `+` / `-` | Zoom |
 | Arrow keys | Pan map |
 | D | Duplicate selected train |
-| Delete | Delete selected station/train |
+| Delete | Delete selected object |
 | Esc | Cancel current operation |
 
 ## Build
