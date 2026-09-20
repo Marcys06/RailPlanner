@@ -218,55 +218,38 @@ public sealed class MainGame : Game
 
         var used = train.Timetable.Select(x => x.StationId).ToHashSet();
         var next = project.Stations.FirstOrDefault(x => !used.Contains(x.Id));
-
         if (next is null)
         {
             status = "ALL STATIONS ALREADY IN ROUTE";
             return;
         }
 
-        var last = train.Timetable[^1];
-        var previous = project.Stations.FirstOrDefault(x => x.Id == last.StationId);
-        var section = previous is null ? null : FindSectionBetween(previous.Id, next.Id);
+        var destination = train.Timetable[^1];
+        var previous = train.Timetable.Count >= 2 ? train.Timetable[^2] : train.Timetable[^1];
+        var sectionToNext = FindSectionBetween(previous.StationId, next.Id);
+        var sectionToDestination = FindSectionBetween(next.Id, destination.StationId);
 
-        if (section is null)
+        if (sectionToNext is null || sectionToDestination is null)
         {
-            status = $"NO RAIL SECTION {StationCode(previous?.Id)} -> {next.Code}";
+            status = $"NO CONTINUOUS ROUTE VIA {next.Code}";
             return;
         }
 
-        // Nowa stacja trafia przed dotychczasową stację końcową.
-        var destination = train.Timetable[^1];
-        var arrival = ParseTime(destination.Arrival) ?? ParseTime(destination.Departure) ?? TimeSpan.FromHours(10);
-        var previousTime = ParseTime(last.Arrival) ?? ParseTime(last.Departure) ?? TimeSpan.FromHours(8);
-        var midpoint = previousTime + TimeSpan.FromMinutes(Math.Max(5, (arrival - previousTime).TotalMinutes / 2));
+        var fromTime = ParseTime(previous.Departure) ?? ParseTime(previous.Arrival) ?? TimeSpan.FromHours(8);
+        var destinationTime = ParseTime(destination.Arrival) ?? TimeSpan.FromHours(10);
+        if (destinationTime <= fromTime)
+            destinationTime = fromTime.Add(TimeSpan.FromHours(1));
 
-        destination.Kind = StopKind.Stop;
-        destination.Arrival = FormatTime(midpoint.Add(TimeSpan.FromMinutes(15)));
-        destination.Departure = destination.Arrival;
+        var midpoint = fromTime + TimeSpan.FromMinutes(
+            Math.Max(5, (destinationTime - fromTime).TotalMinutes / 2));
 
-        train.Timetable.Add(new TimetableEntry
+        train.Timetable.Insert(train.Timetable.Count - 1, new TimetableEntry
         {
             StationId = next.Id,
-            Kind = StopKind.Destination,
-            Arrival = FormatTime(arrival)
+            Kind = StopKind.Stop,
+            Arrival = FormatTime(midpoint),
+            Departure = FormatTime(midpoint)
         });
-
-        // Przestawienie: nowa stacja jest po poprzedniej; jeśli poprzednia była
-        // końcem, powyższe zastępuje jej rolę przez zachowanie kolejności.
-        if (train.Timetable.Count >= 3)
-        {
-            var oldDestination = train.Timetable[^2];
-            train.Timetable[^2] = new TimetableEntry
-            {
-                StationId = oldDestination.StationId,
-                Kind = StopKind.Stop,
-                Arrival = destination.Arrival,
-                Departure = destination.Departure,
-                TrackId = oldDestination.TrackId
-            };
-            train.Timetable[^1].Kind = StopKind.Destination;
-        }
 
         result = new SimulationResult();
         status = $"ROUTE + {next.Code} (STOP)";
@@ -281,7 +264,6 @@ public sealed class MainGame : Game
             return;
         }
 
-        // P przełącza ostatnią stację pośrednią STOP <-> PASS.
         var entry = train.Timetable[^2];
         if (entry.Kind == StopKind.Stop)
         {
@@ -312,12 +294,15 @@ public sealed class MainGame : Game
             return;
         }
 
-        var entry = train.Timetable[^2];
-        var previous = train.Timetable[^3 >= 0 ? ^2 : 0];
+        // Tor przypisujemy do ostatniego odcinka przed ostatnią stacją pośrednią.
+        var entryIndex = train.Timetable.Count - 2;
+        var entry = train.Timetable[entryIndex];
+        var previous = train.Timetable[entryIndex - 1];
         var section = FindSectionBetween(previous.StationId, entry.StationId);
+
         if (section is null)
         {
-            status = "NO SECTION FOR SELECTED TRACK";
+            status = $"NO SECTION {StationCode(previous.StationId)} -> {StationCode(entry.StationId)}";
             return;
         }
 
