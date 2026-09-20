@@ -200,7 +200,7 @@ public sealed class MainGame : Game
         Rect(new Rectangle(0, 0, 1440, 64), new Color(24, 29, 36));
         Text("RAILPLANNER", new Vector2(22, 14), Color.White, 1.15f);
         Text("24H RAILWAY SIMULATION", new Vector2(22, 39), Color.Gray, .48f);
-        Text($"TIME {simTime:hh\:mm\:ss}", new Vector2(350, 20), Color.White, .75f);
+        Text($"TIME {simTime:hh\\:mm\\:ss}", new Vector2(350, 20), Color.White, .75f);
         Text(running ? "RUNNING" : "PAUSED", new Vector2(500, 20), running ? Color.LightGreen : Color.Gray, .7f);
         Text($"x{speed:0}", new Vector2(610, 20), Color.LightGray, .65f);
     }
