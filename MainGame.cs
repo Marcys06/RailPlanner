@@ -379,7 +379,7 @@ public sealed class MainGame : Game
             running ? Color.LightGreen : Color.LightGray, .65f);
         Text($"SPEED x{speed:0}", new Vector2(590, 15), Color.White, .65f);
 
-        Text("[A] ADD  [DEL] DELETE  [↑↓] SELECT  [N] STATION  [P] STOP/PASS  [1-9] TOR",
+        Text("[A] ADD  [DEL] DELETE  [UPDOWN] SELECT  [N] STATION  [P] STOP/PASS  [1-9] TOR",
             new Vector2(760, 9), Color.LightGray, .42f);
         Text("[SPACE] START/PAUSE  [ENTER] 24H  [R] RESET  [F5] SAVE  [F6] LOAD",
             new Vector2(760, 29), Color.LightGray, .42f);
@@ -396,7 +396,7 @@ public sealed class MainGame : Game
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, header),
-            "NR", "OPERATOR", "NAZWA", "OD", "DO", "ODJAZD", "PRZYJAZD", "OPÓŹN.", "STATUS");
+            "NR", "OPERATOR", "NAZWA", "OD", "DO", "ODJAZD", "PRZYJAZD", "OPOZN.", "STATUS");
 
         y += header;
         for (var i = 0; i < project.Trains.Take(9).Count(); i++)
