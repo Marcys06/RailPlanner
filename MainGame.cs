@@ -534,6 +534,10 @@ public sealed class MainGame : Game
     }
 
     private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
+        string c5, string c6, string c7, bool warning)
+        => DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7 }, warning);
+
+    private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
         string c5, string c6, string c7, string c8, bool warning)
         => DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8 }, warning);
 
