@@ -1,91 +1,54 @@
 # RailPlanner
 
-RailPlanner is a static railway-network planner for OpenTTD projects. It is intentionally not a real-time train simulator: the application stores a schematic network and timetable data, then checks the timetable for infrastructure conflicts.
+RailPlanner is a compact OpenTTD-inspired railway network and timetable simulator.
 
-The UI follows the dark, technical dispatcher style of RailDispatchMono and is built with MonoGame/DesktopGL on .NET 9.
-
-The application UI and project documentation use English and ASCII-only interface text so the default SpriteFont does not depend on locale-specific characters.
+The current direction is a 24-hour discrete simulation, not a real-time railway dispatcher. A project contains infrastructure, carriers and train runs. The simulation calculates actual track occupancy, propagates waiting time caused by occupied tracks, detects scheduled conflicts and produces 24-hour statistics.
 
 ## Current MVP
 
-- Large logical map (default 1000 x 1000).
-- Stations with code, name, track count and type.
-- Railway lines (`LK...`) with numbered segments such as `LK001|1`, `LK001|2`, `LK001|3`.
-- A railway line represents the complete route, while each segment connects two consecutive stations.
-- Example structure: `LK001 Wroclaw - Klodzko` -> `LK001|1 Wroclaw - Iwiny` -> `LK001|2 Iwiny - Smardzow` -> `...` -> `LK001|N ... - Klodzko`.
-- Schematic section geometry stored as map points.
-- Commercial lines (`IC`, `R`, etc.) separated from infrastructure lines.
-- Individual train runs with static arrival/departure times.
-- `PASS` timetable semantics are represented by `StopKind.Pass` and do not require a stop.
-- Optional explicit track selection for each timetable departure.
-- Duplicate train runs with `D`.
-- Static conflict analysis with `OK / WARNING / CONFLICT` style counters.
-- Informational station track-load calculation; station occupancy does not create conflicts.
-- One project file: `project.railplanner` (JSON).
-
-## Unified editor workflow
-
-All object creation and editing uses the same modal-editor pattern. The station editor is the visual baseline for the other editors.
-
-- **Station**: `ADD / EDIT STATION` dialog with code, name, tracks and type.
-- **Railway line**: `ADD / EDIT RAILWAY LINE` dialog with number and name.
-- **Railway section**: `ADD / EDIT RAILWAY SECTION` dialog with from/to stations, segment number and directional track names.
-- **Train**: `ADD / EDIT TRAIN` dialog with number, name, commercial line and a full timetable editor.
-- Existing objects are edited in the same dialog used for creation, with the current values prefilled.
-- `SAVE` commits the draft object; `CANCEL` discards the draft.
-- Timetable stations are selected through a dedicated station picker instead of requiring manual station identifiers.
-
-This keeps object creation consistent: every new object is configured in a form before it is committed to the project. Map placement remains the first step for a new station because its coordinates come from the map click.
-
-## Line browser
-
-Press `F8` to open the line view. Click a railway line in the left panel to expand it and see its ordered segments. Each segment has its own identifier in the form `LINE|SEGMENT`, for example:
-
-```text
-LK001  Wroclaw - Klodzko
-  Wroclaw - Iwiny
-  LK001|1  Wroclaw - Iwiny
-  LK001|2  Iwiny - Smardzow
-  LK001|3  Smardzow - ...
-  LK001|4  ... - Klodzko
-```
-
-Selecting a segment highlights that exact section on the schematic map. The full line remains the parent object; segments are the infrastructure units used for routing and analysis.
+- Railway network: stations, lines, sections and directional tracks.
+- Multiple carriers and train runs.
+- Timetable points with arrival/departure times and optional track selection.
+- 24-hour simulation engine.
+- Track occupancy and delay propagation.
+- Scheduled overlap detection.
+- Section utilization and delay statistics.
+- Save/load of the complete project as project.railplanner.
+- MonoGame/DesktopGL dashboard based on the existing RailPlanner foundation.
+- Demo scenario loaded automatically on startup.
 
 ## Controls
 
 | Key | Action |
 |---|---|
-| F1 | Select mode |
-| F2 | Add station, then open station details |
-| F3 | Create railway section between two stations |
-| F4 | Create a train in the train editor |
-| F5 | Save `project.railplanner` |
-| F6 | Load `project.railplanner` |
-| F7 | Analyze timetable |
-| F8 | Open line browser |
-| F9 | Edit selected station |
-| L | Open railway line editor |
-| E | Edit selected object |
-| N | Add section to selected line |
-| `+` / `-` | Zoom |
-| Arrow keys | Pan map |
-| D | Duplicate selected train |
-| Delete | Delete selected object |
-| Esc | Cancel current operation |
+| Space | Start / pause simulation |
+| Enter | Run the complete 24 hours immediately |
+| R | Reset simulation |
+| + / - | Change simulation speed |
+| T | Add a demo train |
+| F5 | Save project |
+| F6 | Load project |
+| F7 | Run complete 24 hours |
+| F8 | Show result summary |
+
+## Simulation model
+
+The simulation runs from 00:00 to 24:00.
+
+A train occupies a directional track from its scheduled departure until the scheduled arrival. If the selected track is still occupied by another simulated train, the train waits until the resource becomes free. That waiting time propagates to later timetable points.
+
+The first version intentionally keeps the model small. Signals, block sections, route locking, switches, acceleration/braking curves, platform conflicts and passenger demand are not part of the core yet.
+
+## Data model
+
+RailProject -> Carrier, Station, RailwayLine -> RailSection -> RailTrack, TrainRun -> TimetableEntry.
+
+SimulationResult -> OccupancyInterval, SimulationConflict, TrainResult, SectionUtilization.
 
 ## Build
 
-Requires the .NET 9 SDK. From the repository root:
+Requires the .NET 9 SDK.
 
-```text
-dotnet tool restore
-dotnet restore
-dotnet run
-```
+Run dotnet restore and then dotnet run from the repository root.
 
-The project uses the same MonoGame/DesktopGL family as RailDispatchMono rather than introducing a web stack.
-
-## Timetable model
-
-A train occupies a directional track from the departure time at station A until the arrival time at station B. Conflicts are reported when two runs overlap on the same track. A train can pass a station without stopping; `StopKind.Pass` keeps the point in its timetable while distinguishing it from a scheduled stop.
+The project keeps MonoGame/DesktopGL because it is suitable for an OpenTTD-like desktop simulation view.
