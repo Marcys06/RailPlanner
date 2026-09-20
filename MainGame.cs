@@ -93,7 +93,7 @@ public sealed class MainGame : Game
         if (pressed(Keys.F6)) Load();
         if (pressed(Keys.F8)) status = BuildReport();
 
-        // Edycja pociągów i tras:
+        // Train and route editing:
         if (pressed(Keys.A)) AddTrain();
         if (pressed(Keys.Delete) || pressed(Keys.Back))
             DeleteSelectedTrain();
@@ -294,7 +294,7 @@ public sealed class MainGame : Game
             return;
         }
 
-        // Tor przypisujemy do ostatniego odcinka przed ostatnią stacją pośrednią.
+        // Assign the track to the last segment before the last intermediate station.
         var entryIndex = train.Timetable.Count - 2;
         var entry = train.Timetable[entryIndex];
         var previous = train.Timetable[entryIndex - 1];
@@ -379,9 +379,9 @@ public sealed class MainGame : Game
             running ? Color.LightGreen : Color.LightGray, .65f);
         Text($"SPEED x{speed:0}", new Vector2(590, 15), Color.White, .65f);
 
-        Text("[A] DODAJ  [DEL] USUŃ  [↑↓] WYBIERZ  [N] STACJA  [P] STOP/PASS  [1-9] TOR",
+        Text("[A] ADD  [DEL] DELETE  [↑↓] SELECT  [N] STATION  [P] STOP/PASS  [1-9] TOR",
             new Vector2(760, 9), Color.LightGray, .42f);
-        Text("[SPACE] START/PAUSE  [ENTER] 24H  [R] RESET  [F5] ZAPISZ  [F6] WCZYTAJ",
+        Text("[SPACE] START/PAUSE  [ENTER] 24H  [R] RESET  [F5] SAVE  [F6] LOAD",
             new Vector2(760, 29), Color.LightGray, .42f);
     }
 
@@ -391,8 +391,8 @@ public sealed class MainGame : Game
         const int header = 34;
         const int row = 30;
 
-        Text("POCIĄGI", new Vector2(Left, top), Color.Black, .72f);
-        Text($"{project.Trains.Count} wpisów", new Vector2(1220, top + 4), Color.DimGray, .45f);
+        Text("TRAINS", new Vector2(Left, top), Color.Black, .72f);
+        Text($"{project.Trains.Count} entries", new Vector2(1220, top + 4), Color.DimGray, .45f);
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, header),
@@ -433,7 +433,7 @@ public sealed class MainGame : Game
     private void DrawConflictTable()
     {
         const int top = 392;
-        Text("KONFLIKTY", new Vector2(Left, top), Color.Black, .68f);
+        Text("CONFLICTS", new Vector2(Left, top), Color.Black, .68f);
         Text($"{result.Conflicts.Count}", new Vector2(1220, top + 4),
             result.Conflicts.Count == 0 ? Color.DarkGreen : Color.DarkRed, .5f);
 
@@ -445,7 +445,7 @@ public sealed class MainGame : Game
         if (result.Conflicts.Count == 0)
         {
             DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
-                "-", "NONE", "-", "-", "-", "-", "-", "BRAK KONFLIKTÓW", false);
+                "-", "NONE", "-", "-", "-", "-", "-", "NO CONFLICTS", false);
             return;
         }
 
@@ -472,21 +472,21 @@ public sealed class MainGame : Game
     private void DrawRouteTable()
     {
         const int top = 665;
-        Text("TRASA WYBRANEGO POCIĄGU", new Vector2(Left, top), Color.Black, .68f);
+        Text("SELECTED TRAIN ROUTE", new Vector2(Left, top), Color.Black, .68f);
 
         var train = SelectedTrain;
         if (train is null)
         {
-            Text("BRAK POCIĄGU — [A] DODAJ", new Vector2(Left, top + 30), Color.DimGray, .5f);
+            Text("NO TRAIN - [A] ADD", new Vector2(Left, top + 30), Color.DimGray, .5f);
             return;
         }
 
-        Text($"{train.Number} | [N] dodaj stację | [P] STOP/PASS na ostatniej stacji pośredniej | [1-9] przypisz tor",
+        Text($"{train.Number} | [N] add station | [P] STOP/PASS na last stacji intermediate | [1-9] assign track",
             new Vector2(370, top + 4), Color.DimGray, .42f);
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
-            "LP", "STACJA", "TYP", "PRZYJAZD", "ODJAZD", "TOR", "SEKCJA");
+            "LP", "STATION", "TYP", "PRZYJAZD", "ODJAZD", "TOR", "SECTION");
 
         y += 30;
         for (var i = 0; i < train.Timetable.Take(7).Count(); i++)
@@ -514,9 +514,9 @@ public sealed class MainGame : Game
     {
         Rect(new Rectangle(0, 865, Width, 35), new Color(35, 35, 35));
         Text($"STATUS: {status}", new Vector2(18, 875), Color.White, .45f);
-        Text($"Pociągi: {project.Trains.Count} | Stacje: {project.Stations.Count} | " +
-             $"Sekcje: {project.Lines.SelectMany(x => x.Sections).Count()} | " +
-             $"Opóźnione: {result.DelayedTrains} | Konflikty: {result.Conflicts.Count}",
+        Text($"Trains: {project.Trains.Count} | Stations: {project.Stations.Count} | " +
+             $"Sections: {project.Lines.SelectMany(x => x.Sections).Count()} | " +
+             $"Delayed: {result.DelayedTrains} | Conflicts: {result.Conflicts.Count}",
             new Vector2(620, 875), Color.LightGray, .42f);
     }
 
