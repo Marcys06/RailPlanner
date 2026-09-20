@@ -8,8 +8,8 @@
     <Style>Regular</Style>
     <CharacterRegions>
       <CharacterRegion><Start>&#32;</Start><End>~</End></CharacterRegion>
-      <CharacterRegion><Start>ą</Start><End>ż</End></CharacterRegion>
-      <CharacterRegion><Start>Ą</Start><End>Ż</End></CharacterRegion>
+      <CharacterRegion><Start>&#160;</Start><End>&#255;</End></CharacterRegion>
+      <CharacterRegion><Start>&#256;</Start><End>&#383;</End></CharacterRegion>
     </CharacterRegions>
   </Asset>
 </XnaContent>
