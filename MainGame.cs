@@ -18,19 +18,23 @@ public sealed class MainGame : Game
     private bool running;
     private double speed = 60;
     private string status = "READY";
-    private string projectFile = "project.railplanner";
+    private readonly string projectFile = "project.railplanner";
     private KeyboardState oldKeys;
-    private MouseState oldMouse;
+
+    private const int Width = 1440;
+    private const int Height = 900;
+    private const int Left = 18;
+    private const int Right = 1422;
 
     public MainGame()
     {
         graphics = new GraphicsDeviceManager(this)
         {
-            PreferredBackBufferWidth = 1440,
-            PreferredBackBufferHeight = 900
+            PreferredBackBufferWidth = Width,
+            PreferredBackBufferHeight = Height
         };
         Content.RootDirectory = "Content";
-        IsMouseVisible = true;
+        IsMouseVisible = false;
         Window.Title = "RailPlanner - 24h Railway Simulation";
     }
 
@@ -51,8 +55,10 @@ public sealed class MainGame : Game
     protected override void Update(GameTime gameTime)
     {
         var keys = Keyboard.GetState();
-        var mouse = Mouse.GetState();
         bool pressed(Keys key) => keys.IsKeyDown(key) && !oldKeys.IsKeyDown(key);
+
+        if (pressed(Keys.Escape))
+            Exit();
 
         if (pressed(Keys.Space))
         {
@@ -60,7 +66,7 @@ public sealed class MainGame : Game
             status = running ? "SIMULATION RUNNING" : "PAUSED";
         }
 
-        if (pressed(Keys.Enter))
+        if (pressed(Keys.Enter) || pressed(Keys.F7))
             Run24Hours();
 
         if (pressed(Keys.R))
@@ -74,18 +80,17 @@ public sealed class MainGame : Game
         if (pressed(Keys.Add) || pressed(Keys.OemPlus))
         {
             speed = Math.Min(3600, speed * 2);
-            status = $"SPEED {speed:0} SIM MIN / REAL SEC";
+            status = $"SPEED x{speed:0}";
         }
 
         if (pressed(Keys.Subtract) || pressed(Keys.OemMinus))
         {
             speed = Math.Max(1, speed / 2);
-            status = $"SPEED {speed:0} SIM MIN / REAL SEC";
+            status = $"SPEED x{speed:0}";
         }
 
         if (pressed(Keys.F5)) Save();
         if (pressed(Keys.F6)) Load();
-        if (pressed(Keys.F7)) Run24Hours();
         if (pressed(Keys.F8)) status = BuildReport();
         if (pressed(Keys.T)) AddDemoTrain();
 
@@ -101,17 +106,7 @@ public sealed class MainGame : Game
             }
         }
 
-        if (mouse.LeftButton == ButtonState.Pressed &&
-            oldMouse.LeftButton == ButtonState.Released &&
-            mouse.X > 300)
-        {
-            var clicked = project.Stations.FirstOrDefault(s =>
-                Vector2.Distance(new Vector2(s.X + 300, s.Y + 90), mouse.Position.ToVector2()) < 18);
-            if (clicked != null) status = $"{clicked.Code} - {clicked.Name} / {clicked.Tracks} tracks";
-        }
-
         oldKeys = keys;
-        oldMouse = mouse;
         base.Update(gameTime);
     }
 
@@ -125,7 +120,8 @@ public sealed class MainGame : Game
 
     private void AddDemoTrain()
     {
-        if (project.Stations.Count < 2) return;
+        if (project.Stations.Count < 2 || project.Carriers.Count == 0) return;
+
         var carrier = project.Carriers.First();
         var a = project.Stations[0];
         var b = project.Stations[^1];
@@ -136,14 +132,14 @@ public sealed class MainGame : Game
             Number = number,
             Name = "Generated regional",
             CarrierId = carrier.Id,
-            Timetable = new()
+            Timetable =
             {
                 new TimetableEntry { StationId = a.Id, Kind = StopKind.Origin, Departure = "08:00" },
                 new TimetableEntry { StationId = b.Id, Kind = StopKind.Destination, Arrival = "10:00" }
             }
         });
 
-        status = $"ADDED {number}. Press ENTER to simulate.";
+        status = $"ADDED {number} - PRESS ENTER TO SIMULATE";
     }
 
     private void Save()
@@ -171,145 +167,260 @@ public sealed class MainGame : Game
 
     private string BuildReport()
     {
-        if (result.Trains.Count == 0) return "NO SIMULATION RESULT - PRESS ENTER";
+        if (result.Trains.Count == 0)
+            return "NO SIMULATION RESULT - PRESS ENTER";
 
         var worst = result.Trains.OrderByDescending(x => x.Delay).FirstOrDefault();
         return $"TRAINS {result.Trains.Count} | DELAYED {result.DelayedTrains} | " +
-               $"AVG DELAY {result.AverageDelayMinutes:0.0} MIN | " +
-               $"TOTAL DELAY {result.TotalDelayMinutes:0} MIN | " +
-               $"CONFLICTS {result.Conflicts.Count} | " +
-               $"WORST {(worst?.TrainNumber ?? "-")} {(worst?.Delay.TotalMinutes ?? 0):0} MIN";
+               $"AVG {result.AverageDelayMinutes:0.0} MIN | TOTAL {result.TotalDelayMinutes:0} MIN | " +
+               $"CONFLICTS {result.Conflicts.Count} | WORST {(worst?.TrainNumber ?? "-")} {(worst?.Delay.TotalMinutes ?? 0):0} MIN";
     }
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(new Color(12, 15, 19));
+        GraphicsDevice.Clear(new Color(245, 245, 245));
         batch.Begin(samplerState: SamplerState.PointClamp);
 
-        DrawHeader();
-        DrawMap();
-        DrawSidebar();
-        DrawTimeline();
+        DrawTopBar();
+        DrawTrainTable();
+        DrawTimetable();
+        DrawConflictTable();
+        DrawFooter();
 
         batch.End();
         base.Draw(gameTime);
     }
 
-    private void DrawHeader()
+    private void DrawTopBar()
     {
-        Rect(new Rectangle(0, 0, 1440, 64), new Color(24, 29, 36));
-        Text("RAILPLANNER", new Vector2(22, 14), Color.White, 1.15f);
-        Text("24H RAILWAY SIMULATION", new Vector2(22, 39), Color.Gray, .48f);
-        Text($"TIME {simTime:hh\\:mm\\:ss}", new Vector2(350, 20), Color.White, .75f);
-        Text(running ? "RUNNING" : "PAUSED", new Vector2(500, 20), running ? Color.LightGreen : Color.Gray, .7f);
-        Text($"x{speed:0}", new Vector2(610, 20), Color.LightGray, .65f);
+        Rect(new Rectangle(0, 0, Width, 54), new Color(35, 35, 35));
+        Text("RAILPLANNER", new Vector2(18, 9), Color.White, .9f);
+        Text("24H SIMULATION", new Vector2(18, 32), Color.LightGray, .42f);
+
+        Text($"TIME {FormatTime(simTime)}", new Vector2(300, 15), Color.White, .7f);
+        Text(running ? "RUNNING" : "PAUSED", new Vector2(470, 15),
+            running ? Color.LightGreen : Color.LightGray, .65f);
+        Text($"SPEED x{speed:0}", new Vector2(590, 15), Color.White, .65f);
+
+        Text("[SPACE] RUN/PAUSE   [ENTER] 24H   [R] RESET   [+/-] SPEED",
+            new Vector2(760, 17), Color.LightGray, .45f);
     }
 
-    private void DrawMap()
+    private void DrawTrainTable()
     {
-        Rect(new Rectangle(0, 64, 1080, 720), new Color(18, 23, 28));
+        const int top = 68;
+        const int header = 34;
+        const int row = 30;
 
-        foreach (var line in project.Lines)
-        foreach (var section in line.Sections)
+        Text("POCIĄGI", new Vector2(Left, top), Color.Black, .72f);
+        Text($"{project.Trains.Count} wpisów", new Vector2(1220, top + 4), Color.DimGray, .45f);
+
+        var y = top + 27;
+        DrawTableHeader(new Rectangle(Left, y, Right - Left, header),
+            "NR", "OPERATOR", "NAZWA", "OD", "DO", "ODJAZD", "PRZYJAZD", "OPÓŹN.", "STATUS");
+
+        y += header;
+        foreach (var train in project.Trains.Take(18))
         {
-            var a = project.Stations.FirstOrDefault(s => s.Id == section.FromStationId);
-            var b = project.Stations.FirstOrDefault(s => s.Id == section.ToStationId);
-            if (a == null || b == null) continue;
-            DrawLine(
-                new Vector2(a.X + 300, a.Y + 90),
-                new Vector2(b.X + 300, b.Y + 90),
-                Color.DarkGray, 7);
-        }
+            var carrier = project.Carriers.FirstOrDefault(c => c.Id == train.CarrierId);
+            var first = train.Timetable.FirstOrDefault();
+            var last = train.Timetable.LastOrDefault();
+            var from = StationCode(first?.StationId);
+            var to = StationCode(last?.StationId);
+            var trainResult = result.Trains.FirstOrDefault(x => x.TrainId == train.Id);
+            var delay = trainResult?.Delay ?? TimeSpan.Zero;
+            var scheduledDeparture = first?.Departure ?? "--:--";
+            var scheduledArrival = last?.Arrival ?? last?.Departure ?? "--:--";
+            var actualArrival = trainResult == null ? scheduledArrival : FormatTime(trainResult.ActualArrival);
 
-        foreach (var station in project.Stations)
-        {
-            var p = new Vector2(station.X + 300, station.Y + 90);
-            Rect(new Rectangle((int)p.X - 10, (int)p.Y - 10, 20, 20), Color.White);
-            Text(station.Code, p + new Vector2(-14, 15), Color.LightGray, .52f);
-        }
+            DrawTableRow(new Rectangle(Left, y, Right - Left, row),
+                train.Number,
+                carrier?.Code ?? "--",
+                train.Name,
+                from,
+                to,
+                scheduledDeparture,
+                actualArrival,
+                delay == TimeSpan.Zero ? "0 min" : $"+{delay.TotalMinutes:0} min",
+                trainResult == null ? "PLAN" : delay > TimeSpan.Zero ? "DELAY" : "OK",
+                delay > TimeSpan.Zero);
 
-        foreach (var occupancy in result.Occupancies)
-        {
-            if (simTime < occupancy.ActualStart || simTime > occupancy.ActualEnd) continue;
-            var section = project.Lines.SelectMany(x => x.Sections).FirstOrDefault(x => x.Id == occupancy.SectionId);
-            if (section == null) continue;
-            var a = project.Stations.FirstOrDefault(s => s.Id == section.FromStationId);
-            var b = project.Stations.FirstOrDefault(s => s.Id == section.ToStationId);
-            if (a == null || b == null) continue;
-
-            var span = occupancy.ActualEnd - occupancy.ActualStart;
-            var progress = span.TotalSeconds <= 0 ? 1 : (simTime - occupancy.ActualStart).TotalSeconds / span.TotalSeconds;
-            progress = Math.Clamp(progress, 0, 1);
-            var pos = Vector2.Lerp(
-                new Vector2(a.X + 300, a.Y + 90),
-                new Vector2(b.X + 300, b.Y + 90),
-                (float)progress);
-            Rect(new Rectangle((int)pos.X - 7, (int)pos.Y - 7, 14, 14), Color.Orange);
-            Text(occupancy.TrainNumber, pos + new Vector2(10, -8), Color.Orange, .5f);
+            y += row;
         }
     }
 
-    private void DrawSidebar()
+    private void DrawTimetable()
     {
-        Rect(new Rectangle(1080, 64, 360, 720), new Color(22, 27, 33));
-        Text("SIMULATION", new Vector2(1100, 84), Color.White, .8f);
-        Text("SPACE   start / pause", new Vector2(1100, 120), Color.LightGray, .52f);
-        Text("ENTER   run full 24h", new Vector2(1100, 145), Color.LightGray, .52f);
-        Text("R       reset", new Vector2(1100, 170), Color.LightGray, .52f);
-        Text("+ / -   simulation speed", new Vector2(1100, 195), Color.LightGray, .52f);
-        Text("T       add demo train", new Vector2(1100, 220), Color.LightGray, .52f);
-        Text("F5/F6   save / load", new Vector2(1100, 245), Color.LightGray, .52f);
-        Text("F8      report", new Vector2(1100, 270), Color.LightGray, .52f);
+        const int top = 665;
+        Text("ROZKŁAD / OSTATNIA SYMULACJA", new Vector2(Left, top), Color.Black, .68f);
 
-        Text("NETWORK", new Vector2(1100, 315), Color.White, .8f);
-        Text($"Stations      {project.Stations.Count}", new Vector2(1100, 350), Color.LightGray, .58f);
-        Text($"Sections      {project.Lines.SelectMany(x => x.Sections).Count()}", new Vector2(1100, 375), Color.LightGray, .58f);
-        Text($"Trains        {project.Trains.Count}", new Vector2(1100, 400), Color.LightGray, .58f);
-        Text($"Carriers      {project.Carriers.Count}", new Vector2(1100, 425), Color.LightGray, .58f);
+        var y = top + 27;
+        DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
+            "NR", "STACJA", "PRZYJAZD", "ODJAZD", "TOR", "SEKCJA", "RZECZYWISTY START");
 
-        Text("RESULT", new Vector2(1100, 470), Color.White, .8f);
-        Text($"Conflicts     {result.Conflicts.Count}", new Vector2(1100, 505), result.Conflicts.Count == 0 ? Color.LightGreen : Color.OrangeRed, .58f);
-        Text($"Delayed       {result.DelayedTrains}", new Vector2(1100, 530), Color.LightGray, .58f);
-        Text($"Avg delay     {result.AverageDelayMinutes:0.0} min", new Vector2(1100, 555), Color.LightGray, .58f);
-        Text($"Total delay   {result.TotalDelayMinutes:0} min", new Vector2(1100, 580), Color.LightGray, .58f);
-
-        Text("STATUS", new Vector2(1100, 630), Color.White, .8f);
-        Text(Wrap(status, 42), new Vector2(1100, 665), Color.LightGray, .5f);
-    }
-
-    private void DrawTimeline()
-    {
-        Rect(new Rectangle(0, 784, 1440, 116), new Color(14, 18, 22));
-        Text("24H", new Vector2(20, 804), Color.Gray, .5f);
-        for (var h = 0; h <= 24; h += 2)
+        y += 30;
+        foreach (var occupancy in result.Occupancies
+                     .OrderBy(x => x.ActualStart)
+                     .Take(5))
         {
-            var x = 70 + h * 52;
-            Rect(new Rectangle(x, 828, 1, 38), Color.DarkGray);
-            Text($"{h:00}", new Vector2(x - 8, 870), Color.Gray, .45f);
+            var section = FindSection(occupancy.SectionId);
+            var station = section == null ? "--" : StationCode(section.FromStationId);
+
+            DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
+                occupancy.TrainNumber,
+                station,
+                FormatTime(occupancy.ScheduledStart),
+                FormatTime(occupancy.ScheduledStart),
+                TrackName(occupancy.TrackId),
+                section?.Number.ToString() ?? "--",
+                FormatTime(occupancy.ActualStart),
+                "",
+                false);
+
+            y += 25;
         }
-        var markerX = 70 + (float)(simTime.TotalHours * 52);
-        Rect(new Rectangle((int)markerX, 818, 2, 50), Color.Orange);
     }
 
-    private void DrawLine(Vector2 a, Vector2 b, Color color, int width)
+    private void DrawConflictTable()
     {
-        var delta = b - a;
-        var length = delta.Length();
-        var angle = (float)Math.Atan2(delta.Y, delta.X);
-        batch.Draw(pixel, a, null, color, angle, Vector2.Zero,
-            new Vector2(length, width), SpriteEffects.None, 0);
+        const int top = 392;
+        Text("KONFLIKTY", new Vector2(Left, top), Color.Black, .68f);
+        Text($"{result.Conflicts.Count}", new Vector2(1220, top + 4),
+            result.Conflicts.Count == 0 ? Color.DarkGreen : Color.DarkRed, .5f);
+
+        var y = top + 27;
+        DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
+            "ID", "TYP", "NR A", "NR B", "TOR", "OD", "DO", "OPIS");
+
+        y += 30;
+        if (result.Conflicts.Count == 0)
+        {
+            DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
+                "-", "NONE", "-", "-", "-", "-", "-", "BRAK KONFLIKTÓW", false);
+            return;
+        }
+
+        foreach (var conflict in result.Conflicts.Take(6))
+        {
+            var a = project.Trains.FirstOrDefault(t => t.Id == conflict.TrainA)?.Number ?? "--";
+            var b = project.Trains.FirstOrDefault(t => t.Id == conflict.TrainB)?.Number ?? "--";
+
+            DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
+                conflict.Id,
+                conflict.Type,
+                a,
+                b,
+                TrackName(conflict.TrackId),
+                FormatTime(conflict.Start),
+                FormatTime(conflict.End),
+                conflict.Message,
+                true);
+
+            y += 25;
+        }
+    }
+
+    private void DrawFooter()
+    {
+        Rect(new Rectangle(0, 865, Width, 35), new Color(35, 35, 35));
+        Text($"STATUS: {status}", new Vector2(18, 875), Color.White, .45f);
+        Text($"Pociągi: {project.Trains.Count} | Stacje: {project.Stations.Count} | " +
+             $"Sekcje: {project.Lines.SelectMany(x => x.Sections).Count()} | " +
+             $"Opóźnione: {result.DelayedTrains} | Konflikty: {result.Conflicts.Count}",
+            new Vector2(620, 875), Color.LightGray, .42f);
+    }
+
+    private void DrawTableHeader(Rectangle area, params string[] cells)
+    {
+        Rect(area, new Color(65, 65, 65));
+        var widths = GetColumnWidths(cells.Length);
+        var x = area.X;
+
+        for (var i = 0; i < cells.Length; i++)
+        {
+            Text(cells[i], new Vector2(x + 7, area.Y + 8), Color.White, .42f);
+            x += widths[i];
+        }
+    }
+
+    private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
+        string c5, string c6, string c7, string c8, bool warning)
+    {
+        DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8 }, warning);
+    }
+
+    private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
+        string c5, string c6, string c7, string c8, string c9, bool warning)
+    {
+        DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8, c9 }, warning);
+    }
+
+    private void DrawTableRow(Rectangle area, string[] cells, bool warning)
+    {
+        Rect(area, warning ? new Color(255, 238, 220) : Color.White);
+        Border(area, new Color(205, 205, 205));
+
+        var widths = GetColumnWidths(cells.Length);
+        var x = area.X;
+
+        for (var i = 0; i < cells.Length; i++)
+        {
+            var text = Clip(cells[i], widths[i] - 12);
+            Text(text, new Vector2(x + 7, area.Y + Math.Max(4, (area.Height - 18) / 2)),
+                warning && i == cells.Length - 1 ? Color.DarkRed : Color.Black, .42f);
+            x += widths[i];
+        }
+    }
+
+    private static int[] GetColumnWidths(int count)
+    {
+        return count switch
+        {
+            9 => new[] { 90, 90, 180, 80, 80, 95, 105, 85, 130 },
+            8 => new[] { 70, 150, 100, 100, 80, 80, 100, 600 },
+            7 => new[] { 100, 140, 100, 100, 80, 80, 600 },
+            _ => Enumerable.Repeat((Right - Left) / Math.Max(1, count), count).ToArray()
+        };
+    }
+
+    private string StationCode(Guid? id)
+        => id is Guid value
+            ? project.Stations.FirstOrDefault(x => x.Id == value)?.Code ?? "--"
+            : "--";
+
+    private string TrackName(Guid id)
+        => project.Lines.SelectMany(x => x.Sections)
+            .SelectMany(x => x.Tracks)
+            .FirstOrDefault(x => x.Id == id)?.Name ?? "--";
+
+    private RailSection? FindSection(Guid id)
+        => project.Lines.SelectMany(x => x.Sections).FirstOrDefault(x => x.Id == id);
+
+    private void Border(Rectangle r, Color color)
+    {
+        Rect(new Rectangle(r.X, r.Y, r.Width, 1), color);
+        Rect(new Rectangle(r.X, r.Bottom - 1, r.Width, 1), color);
+        Rect(new Rectangle(r.X, r.Y, 1, r.Height), color);
+        Rect(new Rectangle(r.Right - 1, r.Y, 1, r.Height), color);
+    }
+
+    private static string Clip(string value, int width)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        var max = Math.Max(1, width / 8);
+        return value.Length <= max ? value : value[..Math.Max(0, max - 3)] + "...";
+    }
+
+    private static string FormatTime(TimeSpan time)
+    {
+        var totalHours = (int)time.TotalHours;
+        return $"{totalHours:00}:{time.Minutes:00}";
     }
 
     private void Rect(Rectangle r, Color color) => batch.Draw(pixel, r, color);
 
     private void Text(string value, Vector2 position, Color color, float scale)
         => batch.DrawString(font, value, position, color, 0, Vector2.Zero, scale, SpriteEffects.None, 0);
-
-    private static string Wrap(string value, int width)
-    {
-        if (value.Length <= width) return value;
-        return value[..width] + "...";
-    }
 }
 
 internal static class DemoProject
@@ -322,10 +433,10 @@ internal static class DemoProject
         var ic = new Carrier { Code = "IC", Name = "PKP Intercity" };
         p.Carriers.AddRange(new[] { kd, ic });
 
-        var wro = new Station { Code = "WRO", Name = "Wroclaw", X = 80, Y = 260, Tracks = 6, Type = StationType.Main };
-        var ola = new Station { Code = "OLA", Name = "Olawa", X = 300, Y = 180, Tracks = 3, Type = StationType.Local };
-        var brz = new Station { Code = "BRZ", Name = "Brzeg", X = 520, Y = 250, Tracks = 3, Type = StationType.Local };
-        var leg = new Station { Code = "LEG", Name = "Legnica", X = 820, Y = 130, Tracks = 4, Type = StationType.Main };
+        var wro = new Station { Code = "WRO", Name = "Wroclaw", Tracks = 6, Type = StationType.Main };
+        var ola = new Station { Code = "OLA", Name = "Olawa", Tracks = 3, Type = StationType.Local };
+        var brz = new Station { Code = "BRZ", Name = "Brzeg", Tracks = 3, Type = StationType.Local };
+        var leg = new Station { Code = "LEG", Name = "Legnica", Tracks = 4, Type = StationType.Main };
         p.Stations.AddRange(new[] { wro, ola, brz, leg });
 
         var line = new RailwayLine { Number = "LK001", Name = "Demo corridor" };
@@ -358,9 +469,10 @@ internal static class DemoProject
             {
                 Name = (i + 1).ToString(),
                 Direction = i % 2 == 0 ? TrackDirection.Forward : TrackDirection.Reverse,
-                Vmax = i == 0 ? 120 : 120
+                Vmax = 120
             });
         }
+
         return s;
     }
 
@@ -373,7 +485,7 @@ internal static class DemoProject
             Number = number,
             Name = name,
             CarrierId = carrier.Id,
-            Timetable = new()
+            Timetable =
             {
                 new TimetableEntry { StationId = a.Id, Kind = StopKind.Origin, Departure = t0 },
                 new TimetableEntry { StationId = b.Id, Kind = StopKind.Stop, Arrival = t1, Departure = t1 },
