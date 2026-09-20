@@ -21,6 +21,9 @@ public sealed class MainGame : Game
     private readonly string projectFile = "project.railplanner";
     private KeyboardState oldKeys;
     private int selectedTrain;
+    private int selectedRouteEntry;
+    private int routeCandidateIndex;
+    private bool editMode;
 
     private const int Width = 1440;
     private const int Height = 900;
@@ -77,13 +80,13 @@ public sealed class MainGame : Game
             status = "SIMULATION RESET";
         }
 
-        if (pressed(Keys.Add) || pressed(Keys.OemPlus))
+        if (!editMode && (pressed(Keys.Add) || pressed(Keys.OemPlus)))
         {
             speed = Math.Min(3600, speed * 2);
             status = $"SPEED x{speed:0}";
         }
 
-        if (pressed(Keys.Subtract) || pressed(Keys.OemMinus))
+        if (!editMode && (pressed(Keys.Subtract) || pressed(Keys.OemMinus)))
         {
             speed = Math.Max(1, speed / 2);
             status = $"SPEED x{speed:0}";
@@ -101,10 +104,24 @@ public sealed class MainGame : Game
             SelectTrain(-1);
         if (pressed(Keys.Down))
             SelectTrain(1);
+        if (pressed(Keys.Left))
+            SelectRouteEntry(-1);
+        if (pressed(Keys.Right))
+            SelectRouteEntry(1);
+        if (pressed(Keys.E))
+            editMode = !editMode;
         if (pressed(Keys.N))
             AddStationToSelectedRoute();
+        if (pressed(Keys.X))
+            RemoveSelectedRouteEntry();
+        if (pressed(Keys.C))
+            SelectNextRouteCandidate();
         if (pressed(Keys.P))
             ToggleSelectedStationStop();
+        if (editMode && (pressed(Keys.OemPlus) || pressed(Keys.Add)))
+            AdjustSelectedTime(5);
+        if (editMode && (pressed(Keys.OemMinus) || pressed(Keys.Subtract)))
+            AdjustSelectedTime(-5);
         if (pressed(Keys.D1) || pressed(Keys.NumPad1)) AssignTrack(1);
         if (pressed(Keys.D2) || pressed(Keys.NumPad2)) AssignTrack(2);
         if (pressed(Keys.D3) || pressed(Keys.NumPad3)) AssignTrack(3);
@@ -147,6 +164,8 @@ public sealed class MainGame : Game
     {
         if (project.Trains.Count == 0) return;
         selectedTrain = Math.Clamp(selectedTrain + delta, 0, project.Trains.Count - 1);
+        selectedRouteEntry = Math.Clamp(selectedRouteEntry, 0, Math.Max(0, SelectedTrain!.Timetable.Count - 1));
+        routeCandidateIndex = 0;
         var train = SelectedTrain!;
         status = $"SELECTED {train.Number}";
     }
@@ -207,6 +226,80 @@ public sealed class MainGame : Game
         status = $"DELETED {number}";
     }
 
+    private void SelectRouteEntry(int delta)
+    {
+        var train = SelectedTrain;
+        if (train is null || train.Timetable.Count == 0) return;
+
+        selectedRouteEntry = Math.Clamp(selectedRouteEntry + delta, 0, train.Timetable.Count - 1);
+        status = $"ROUTE ROW {selectedRouteEntry + 1}: {StationCode(train.Timetable[selectedRouteEntry].StationId)}";
+    }
+
+    private void SelectNextRouteCandidate()
+    {
+        var train = SelectedTrain;
+        if (train is null) return;
+
+        var current = train.Timetable.LastOrDefault()?.StationId;
+        var candidates = project.Stations
+            .Where(s => !train.Timetable.Any(t => t.StationId == s.Id))
+            .Where(s => current is Guid id && FindSectionBetween(id, s.Id) is not null)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            status = "NO CONNECTED STATION CANDIDATE";
+            return;
+        }
+
+        routeCandidateIndex = (routeCandidateIndex + 1) % candidates.Count;
+        status = $"CANDIDATE {candidates[routeCandidateIndex].Code} | PRESS N TO ADD";
+    }
+
+    private void RemoveSelectedRouteEntry()
+    {
+        var train = SelectedTrain;
+        if (train is null || selectedRouteEntry <= 0 || selectedRouteEntry >= train.Timetable.Count - 1)
+        {
+            status = "ONLY INTERMEDIATE STATIONS CAN BE REMOVED";
+            return;
+        }
+
+        var removed = train.Timetable[selectedRouteEntry];
+        train.Timetable.RemoveAt(selectedRouteEntry);
+        selectedRouteEntry = Math.Clamp(selectedRouteEntry, 0, train.Timetable.Count - 1);
+        result = new SimulationResult();
+        status = $"REMOVED {StationCode(removed.StationId)} FROM ROUTE";
+    }
+
+    private void AdjustSelectedTime(int minutes)
+    {
+        var train = SelectedTrain;
+        if (!editMode || train is null || selectedRouteEntry < 0 || selectedRouteEntry >= train.Timetable.Count)
+        {
+            status = "SELECT A ROUTE ROW";
+            return;
+        }
+
+        var entry = train.Timetable[selectedRouteEntry];
+        var value = ParseTime(entry.Departure) ?? ParseTime(entry.Arrival);
+        if (value is null)
+        {
+            status = "NO TIME TO EDIT ON THIS ROW";
+            return;
+        }
+
+        var updated = value.Value.Add(TimeSpan.FromMinutes(minutes));
+        if (updated < TimeSpan.Zero) updated = TimeSpan.Zero;
+        if (updated >= TimeSpan.FromHours(24)) updated = TimeSpan.FromHours(23).Add(TimeSpan.FromMinutes(59));
+
+        var formatted = FormatTime(updated);
+        if (!string.IsNullOrWhiteSpace(entry.Arrival)) entry.Arrival = formatted;
+        if (!string.IsNullOrWhiteSpace(entry.Departure)) entry.Departure = formatted;
+        result = new SimulationResult();
+        status = $"TIME {StationCode(entry.StationId)} -> {formatted}";
+    }
+
     private void AddStationToSelectedRoute()
     {
         var train = SelectedTrain;
@@ -216,19 +309,30 @@ public sealed class MainGame : Game
             return;
         }
 
-        var used = train.Timetable.Select(x => x.StationId).ToHashSet();
-        var next = project.Stations.FirstOrDefault(x => !used.Contains(x.Id));
-        if (next is null)
+        var current = train.Timetable.LastOrDefault()?.StationId;
+        if (current is null)
         {
-            status = "ALL STATIONS ALREADY IN ROUTE";
+            status = "ROUTE IS EMPTY";
             return;
         }
 
         var destination = train.Timetable[^1];
-        var previous = train.Timetable.Count >= 2 ? train.Timetable[^2] : train.Timetable[^1];
+        var candidates = project.Stations
+            .Where(s => !train.Timetable.Any(t => t.StationId == s.Id))
+            .Where(s => FindSectionBetween(current.Value, s.Id) is not null)
+            .Where(s => FindSectionBetween(s.Id, destination.StationId) is not null || train.Timetable.Count == 1)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            status = "NO STATION CAN BE ADDED HERE";
+            return;
+        }
+
+        var next = candidates[Math.Clamp(routeCandidateIndex, 0, candidates.Count - 1)];
+        var previous = train.Timetable[^2];
         var sectionToNext = FindSectionBetween(previous.StationId, next.Id);
         var sectionToDestination = FindSectionBetween(next.Id, destination.StationId);
-
         if (sectionToNext is null || sectionToDestination is null)
         {
             status = $"NO CONTINUOUS ROUTE VIA {next.Code}";
@@ -240,9 +344,7 @@ public sealed class MainGame : Game
         if (destinationTime <= fromTime)
             destinationTime = fromTime.Add(TimeSpan.FromHours(1));
 
-        var midpoint = fromTime + TimeSpan.FromMinutes(
-            Math.Max(5, (destinationTime - fromTime).TotalMinutes / 2));
-
+        var midpoint = fromTime + TimeSpan.FromMinutes(Math.Max(5, (destinationTime - fromTime).TotalMinutes / 2));
         train.Timetable.Insert(train.Timetable.Count - 1, new TimetableEntry
         {
             StationId = next.Id,
@@ -251,20 +353,22 @@ public sealed class MainGame : Game
             Departure = FormatTime(midpoint)
         });
 
+        selectedRouteEntry = train.Timetable.Count - 2;
+        routeCandidateIndex = 0;
         result = new SimulationResult();
-        status = $"ROUTE + {next.Code} (STOP)";
+        status = $"ADDED {next.Code} TO ROUTE";
     }
 
     private void ToggleSelectedStationStop()
     {
         var train = SelectedTrain;
-        if (train is null || train.Timetable.Count < 3)
+        if (train is null || selectedRouteEntry <= 0 || selectedRouteEntry >= train.Timetable.Count - 1)
         {
-            status = "ROUTE NEEDS AN INTERMEDIATE STATION";
+            status = "SELECT AN INTERMEDIATE STATION";
             return;
         }
 
-        var entry = train.Timetable[^2];
+        var entry = train.Timetable[selectedRouteEntry];
         if (entry.Kind == StopKind.Stop)
         {
             entry.Kind = StopKind.Pass;
@@ -288,21 +392,18 @@ public sealed class MainGame : Game
     private void AssignTrack(int trackNumber)
     {
         var train = SelectedTrain;
-        if (train is null || train.Timetable.Count < 2)
+        if (train is null || selectedRouteEntry >= train.Timetable.Count - 1)
         {
-            status = "NO TRAIN ROUTE";
+            status = "SELECT A ROUTE SEGMENT";
             return;
         }
 
-        // Assign the track to the last segment before the last intermediate station.
-        var entryIndex = train.Timetable.Count - 2;
-        var entry = train.Timetable[entryIndex];
-        var previous = train.Timetable[entryIndex - 1];
-        var section = FindSectionBetween(previous.StationId, entry.StationId);
-
+        var entry = train.Timetable[selectedRouteEntry];
+        var next = train.Timetable[selectedRouteEntry + 1];
+        var section = FindSectionBetween(entry.StationId, next.StationId);
         if (section is null)
         {
-            status = $"NO SECTION {StationCode(previous.StationId)} -> {StationCode(entry.StationId)}";
+            status = $"NO SECTION {StationCode(entry.StationId)} -> {StationCode(next.StationId)}";
             return;
         }
 
@@ -314,7 +415,7 @@ public sealed class MainGame : Game
         }
 
         entry.TrackId = track.Id;
-        status = $"TRACK {track.Name} -> {StationCode(entry.StationId)}";
+        status = $"TRACK {track.Name} ASSIGNED TO {StationCode(entry.StationId)} -> {StationCode(next.StationId)}";
         result = new SimulationResult();
     }
 
@@ -379,9 +480,9 @@ public sealed class MainGame : Game
             running ? Color.LightGreen : Color.LightGray, .65f);
         Text($"SPEED x{speed:0}", new Vector2(590, 15), Color.White, .65f);
 
-        Text("[A] ADD  [DEL] DELETE  [UPDOWN] SELECT  [N] STATION  [P] STOP/PASS  [1-9] TOR",
+        Text("[A] ADD TRAIN  [DEL] DELETE  [UP/DOWN] TRAIN  [E] EDIT  [N] ADD ROUTE  [X] REMOVE ROW  [C] CANDIDATE",
             new Vector2(760, 9), Color.LightGray, .42f);
-        Text("[SPACE] START/PAUSE  [ENTER] 24H  [R] RESET  [F5] SAVE  [F6] LOAD",
+        Text("[LEFT/RIGHT] ROUTE ROW  [P] STOP/PASS  [1-9] TRACK  [+/-] TIME  [SPACE] RUN/PAUSE  [ENTER] 24H",
             new Vector2(760, 29), Color.LightGray, .42f);
     }
 
@@ -396,7 +497,7 @@ public sealed class MainGame : Game
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, header),
-            "NR", "OPERATOR", "NAZWA", "OD", "DO", "ODJAZD", "PRZYJAZD", "OPOZN.", "STATUS");
+            "NO", "OPERATOR", "NAME", "FROM", "TO", "DEPARTURE", "ARRIVAL", "DELAY", "STATUS");
 
         y += header;
         for (var i = 0; i < project.Trains.Take(9).Count(); i++)
@@ -439,7 +540,7 @@ public sealed class MainGame : Game
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
-            "ID", "TYP", "NR A", "NR B", "TOR", "OD", "DO", "OPIS");
+            "ID", "TYPE", "TRAIN A", "TRAIN B", "TRACK", "FROM", "TO", "MESSAGE");
 
         y += 30;
         if (result.Conflicts.Count == 0)
@@ -481,12 +582,12 @@ public sealed class MainGame : Game
             return;
         }
 
-        Text($"{train.Number} | [N] add station | [P] STOP/PASS na last stacji intermediate | [1-9] assign track",
+        Text($"{train.Number} | [E] EDIT {(editMode ? "ON" : "OFF")} | [N] ADD | [C] NEXT CANDIDATE | [X] REMOVE | [LEFT/RIGHT] ROW | [P] STOP/PASS | [1-9] TRACK",
             new Vector2(370, top + 4), Color.DimGray, .42f);
 
         var y = top + 27;
         DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
-            "LP", "STATION", "TYP", "PRZYJAZD", "ODJAZD", "TOR", "SECTION");
+            "NO", "STATION", "TYPE", "ARRIVAL", "DEPARTURE", "TRACK", "SECTION");
 
         y += 30;
         for (var i = 0; i < train.Timetable.Take(7).Count(); i++)
@@ -504,7 +605,7 @@ public sealed class MainGame : Game
                 entry.Departure,
                 entry.TrackId is Guid id ? TrackName(id) : "--",
                 section?.Number.ToString() ?? "--",
-                false);
+                i == selectedRouteEntry);
 
             y += 25;
         }
