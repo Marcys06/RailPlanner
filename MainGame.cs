@@ -20,6 +20,7 @@ public sealed class MainGame : Game
     private string status = "READY";
     private readonly string projectFile = "project.railplanner";
     private KeyboardState oldKeys;
+    private int selectedTrain;
 
     private const int Width = 1440;
     private const int Height = 900;
@@ -57,8 +58,7 @@ public sealed class MainGame : Game
         var keys = Keyboard.GetState();
         bool pressed(Keys key) => keys.IsKeyDown(key) && !oldKeys.IsKeyDown(key);
 
-        if (pressed(Keys.Escape))
-            Exit();
+        if (pressed(Keys.Escape)) Exit();
 
         if (pressed(Keys.Space))
         {
@@ -92,7 +92,28 @@ public sealed class MainGame : Game
         if (pressed(Keys.F5)) Save();
         if (pressed(Keys.F6)) Load();
         if (pressed(Keys.F8)) status = BuildReport();
-        if (pressed(Keys.T)) AddDemoTrain();
+
+        // Edycja pociągów i tras:
+        if (pressed(Keys.A)) AddTrain();
+        if (pressed(Keys.Delete) || pressed(Keys.Back))
+            DeleteSelectedTrain();
+        if (pressed(Keys.Up))
+            SelectTrain(-1);
+        if (pressed(Keys.Down))
+            SelectTrain(1);
+        if (pressed(Keys.N))
+            AddStationToSelectedRoute();
+        if (pressed(Keys.P))
+            ToggleSelectedStationStop();
+        if (pressed(Keys.D1) || pressed(Keys.NumPad1)) AssignTrack(1);
+        if (pressed(Keys.D2) || pressed(Keys.NumPad2)) AssignTrack(2);
+        if (pressed(Keys.D3) || pressed(Keys.NumPad3)) AssignTrack(3);
+        if (pressed(Keys.D4) || pressed(Keys.NumPad4)) AssignTrack(4);
+        if (pressed(Keys.D5) || pressed(Keys.NumPad5)) AssignTrack(5);
+        if (pressed(Keys.D6) || pressed(Keys.NumPad6)) AssignTrack(6);
+        if (pressed(Keys.D7) || pressed(Keys.NumPad7)) AssignTrack(7);
+        if (pressed(Keys.D8) || pressed(Keys.NumPad8)) AssignTrack(8);
+        if (pressed(Keys.D9) || pressed(Keys.NumPad9)) AssignTrack(9);
 
         if (running)
         {
@@ -118,28 +139,198 @@ public sealed class MainGame : Game
         status = $"24H COMPLETE: {result.Conflicts.Count} CONFLICTS / {result.DelayedTrains} DELAYED";
     }
 
-    private void AddDemoTrain()
+    private TrainRun? SelectedTrain =>
+        project.Trains.Count == 0 ? null :
+        project.Trains[Math.Clamp(selectedTrain, 0, project.Trains.Count - 1)];
+
+    private void SelectTrain(int delta)
     {
-        if (project.Stations.Count < 2 || project.Carriers.Count == 0) return;
+        if (project.Trains.Count == 0) return;
+        selectedTrain = Math.Clamp(selectedTrain + delta, 0, project.Trains.Count - 1);
+        var train = SelectedTrain!;
+        status = $"SELECTED {train.Number}";
+    }
+
+    private void AddTrain()
+    {
+        if (project.Stations.Count < 2 || project.Carriers.Count == 0)
+        {
+            status = "NEED 2 STATIONS AND 1 OPERATOR";
+            return;
+        }
 
         var carrier = project.Carriers.First();
-        var a = project.Stations[0];
-        var b = project.Stations[^1];
+        var stations = project.Stations;
         var number = $"R {project.Trains.Count + 101:000}";
 
-        project.Trains.Add(new TrainRun
+        var train = new TrainRun
         {
             Number = number,
-            Name = "Generated regional",
+            Name = "New train",
             CarrierId = carrier.Id,
             Timetable =
             {
-                new TimetableEntry { StationId = a.Id, Kind = StopKind.Origin, Departure = "08:00" },
-                new TimetableEntry { StationId = b.Id, Kind = StopKind.Destination, Arrival = "10:00" }
+                new TimetableEntry
+                {
+                    StationId = stations[0].Id,
+                    Kind = StopKind.Origin,
+                    Departure = "08:00"
+                },
+                new TimetableEntry
+                {
+                    StationId = stations[1].Id,
+                    Kind = StopKind.Destination,
+                    Arrival = "09:00"
+                }
             }
+        };
+
+        project.Trains.Add(train);
+        selectedTrain = project.Trains.Count - 1;
+        result = new SimulationResult();
+        status = $"ADDED {number} | N=ADD STATION";
+    }
+
+    private void DeleteSelectedTrain()
+    {
+        var train = SelectedTrain;
+        if (train is null)
+        {
+            status = "NO TRAIN SELECTED";
+            return;
+        }
+
+        var number = train.Number;
+        project.Trains.RemoveAt(selectedTrain);
+        selectedTrain = Math.Clamp(selectedTrain, 0, Math.Max(0, project.Trains.Count - 1));
+        result = new SimulationResult();
+        status = $"DELETED {number}";
+    }
+
+    private void AddStationToSelectedRoute()
+    {
+        var train = SelectedTrain;
+        if (train is null)
+        {
+            status = "NO TRAIN SELECTED";
+            return;
+        }
+
+        var used = train.Timetable.Select(x => x.StationId).ToHashSet();
+        var next = project.Stations.FirstOrDefault(x => !used.Contains(x.Id));
+
+        if (next is null)
+        {
+            status = "ALL STATIONS ALREADY IN ROUTE";
+            return;
+        }
+
+        var last = train.Timetable[^1];
+        var previous = project.Stations.FirstOrDefault(x => x.Id == last.StationId);
+        var section = previous is null ? null : FindSectionBetween(previous.Id, next.Id);
+
+        if (section is null)
+        {
+            status = $"NO RAIL SECTION {StationCode(previous?.Id)} -> {next.Code}";
+            return;
+        }
+
+        // Nowa stacja trafia przed dotychczasową stację końcową.
+        var destination = train.Timetable[^1];
+        var arrival = ParseTime(destination.Arrival) ?? ParseTime(destination.Departure) ?? TimeSpan.FromHours(10);
+        var previousTime = ParseTime(last.Arrival) ?? ParseTime(last.Departure) ?? TimeSpan.FromHours(8);
+        var midpoint = previousTime + TimeSpan.FromMinutes(Math.Max(5, (arrival - previousTime).TotalMinutes / 2));
+
+        destination.Kind = StopKind.Stop;
+        destination.Arrival = FormatTime(midpoint.Add(TimeSpan.FromMinutes(15)));
+        destination.Departure = destination.Arrival;
+
+        train.Timetable.Add(new TimetableEntry
+        {
+            StationId = next.Id,
+            Kind = StopKind.Destination,
+            Arrival = FormatTime(arrival)
         });
 
-        status = $"ADDED {number} - PRESS ENTER TO SIMULATE";
+        // Przestawienie: nowa stacja jest po poprzedniej; jeśli poprzednia była
+        // końcem, powyższe zastępuje jej rolę przez zachowanie kolejności.
+        if (train.Timetable.Count >= 3)
+        {
+            var oldDestination = train.Timetable[^2];
+            train.Timetable[^2] = new TimetableEntry
+            {
+                StationId = oldDestination.StationId,
+                Kind = StopKind.Stop,
+                Arrival = destination.Arrival,
+                Departure = destination.Departure,
+                TrackId = oldDestination.TrackId
+            };
+            train.Timetable[^1].Kind = StopKind.Destination;
+        }
+
+        result = new SimulationResult();
+        status = $"ROUTE + {next.Code} (STOP)";
+    }
+
+    private void ToggleSelectedStationStop()
+    {
+        var train = SelectedTrain;
+        if (train is null || train.Timetable.Count < 3)
+        {
+            status = "ROUTE NEEDS AN INTERMEDIATE STATION";
+            return;
+        }
+
+        // P przełącza ostatnią stację pośrednią STOP <-> PASS.
+        var entry = train.Timetable[^2];
+        if (entry.Kind == StopKind.Stop)
+        {
+            entry.Kind = StopKind.Pass;
+            entry.Departure = entry.Arrival;
+            status = $"PASS THROUGH {StationCode(entry.StationId)}";
+        }
+        else if (entry.Kind == StopKind.Pass)
+        {
+            entry.Kind = StopKind.Stop;
+            entry.Departure = entry.Arrival;
+            status = $"STOP AT {StationCode(entry.StationId)}";
+        }
+        else
+        {
+            status = "SELECTED ENTRY CANNOT BE CHANGED";
+        }
+
+        result = new SimulationResult();
+    }
+
+    private void AssignTrack(int trackNumber)
+    {
+        var train = SelectedTrain;
+        if (train is null || train.Timetable.Count < 2)
+        {
+            status = "NO TRAIN ROUTE";
+            return;
+        }
+
+        var entry = train.Timetable[^2];
+        var previous = train.Timetable[^3 >= 0 ? ^2 : 0];
+        var section = FindSectionBetween(previous.StationId, entry.StationId);
+        if (section is null)
+        {
+            status = "NO SECTION FOR SELECTED TRACK";
+            return;
+        }
+
+        var track = section.Tracks.FirstOrDefault(x => x.Name == trackNumber.ToString());
+        if (track is null)
+        {
+            status = $"TRACK {trackNumber} NOT AVAILABLE";
+            return;
+        }
+
+        entry.TrackId = track.Id;
+        status = $"TRACK {track.Name} -> {StationCode(entry.StationId)}";
+        result = new SimulationResult();
     }
 
     private void Save()
@@ -159,6 +350,7 @@ public sealed class MainGame : Game
         project = JsonSerializer.Deserialize<RailProject>(
             File.ReadAllText(projectFile), ProjectJson.Options) ?? DemoProject.Create();
 
+        selectedTrain = Math.Clamp(selectedTrain, 0, Math.Max(0, project.Trains.Count - 1));
         result = new SimulationResult();
         simTime = TimeSpan.Zero;
         running = false;
@@ -183,8 +375,8 @@ public sealed class MainGame : Game
 
         DrawTopBar();
         DrawTrainTable();
-        DrawTimetable();
         DrawConflictTable();
+        DrawRouteTable();
         DrawFooter();
 
         batch.End();
@@ -202,8 +394,10 @@ public sealed class MainGame : Game
             running ? Color.LightGreen : Color.LightGray, .65f);
         Text($"SPEED x{speed:0}", new Vector2(590, 15), Color.White, .65f);
 
-        Text("[SPACE] RUN/PAUSE   [ENTER] 24H   [R] RESET   [+/-] SPEED",
-            new Vector2(760, 17), Color.LightGray, .45f);
+        Text("[A] DODAJ  [DEL] USUŃ  [↑↓] WYBIERZ  [N] STACJA  [P] STOP/PASS  [1-9] TOR",
+            new Vector2(760, 9), Color.LightGray, .42f);
+        Text("[SPACE] START/PAUSE  [ENTER] 24H  [R] RESET  [F5] ZAPISZ  [F6] WCZYTAJ",
+            new Vector2(760, 29), Color.LightGray, .42f);
     }
 
     private void DrawTrainTable()
@@ -220,8 +414,9 @@ public sealed class MainGame : Game
             "NR", "OPERATOR", "NAZWA", "OD", "DO", "ODJAZD", "PRZYJAZD", "OPÓŹN.", "STATUS");
 
         y += header;
-        foreach (var train in project.Trains.Take(18))
+        for (var i = 0; i < project.Trains.Take(9).Count(); i++)
         {
+            var train = project.Trains[i];
             var carrier = project.Carriers.FirstOrDefault(c => c.Id == train.CarrierId);
             var first = train.Timetable.FirstOrDefault();
             var last = train.Timetable.LastOrDefault();
@@ -233,6 +428,7 @@ public sealed class MainGame : Game
             var scheduledArrival = last?.Arrival ?? last?.Departure ?? "--:--";
             var actualArrival = trainResult == null ? scheduledArrival : FormatTime(trainResult.ActualArrival);
 
+            var selected = i == selectedTrain;
             DrawTableRow(new Rectangle(Left, y, Right - Left, row),
                 train.Number,
                 carrier?.Code ?? "--",
@@ -242,42 +438,10 @@ public sealed class MainGame : Game
                 scheduledDeparture,
                 actualArrival,
                 delay == TimeSpan.Zero ? "0 min" : $"+{delay.TotalMinutes:0} min",
-                trainResult == null ? "PLAN" : delay > TimeSpan.Zero ? "DELAY" : "OK",
-                delay > TimeSpan.Zero);
+                selected ? "SELECTED" : trainResult == null ? "PLAN" : delay > TimeSpan.Zero ? "DELAY" : "OK",
+                delay > TimeSpan.Zero || selected);
 
             y += row;
-        }
-    }
-
-    private void DrawTimetable()
-    {
-        const int top = 665;
-        Text("ROZKŁAD / OSTATNIA SYMULACJA", new Vector2(Left, top), Color.Black, .68f);
-
-        var y = top + 27;
-        DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
-            "NR", "STACJA", "PRZYJAZD", "ODJAZD", "TOR", "SEKCJA", "RZECZYWISTY START");
-
-        y += 30;
-        foreach (var occupancy in result.Occupancies
-                     .OrderBy(x => x.ActualStart)
-                     .Take(5))
-        {
-            var section = FindSection(occupancy.SectionId);
-            var station = section == null ? "--" : StationCode(section.FromStationId);
-
-            DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
-                occupancy.TrainNumber,
-                station,
-                FormatTime(occupancy.ScheduledStart),
-                FormatTime(occupancy.ScheduledStart),
-                TrackName(occupancy.TrackId),
-                section?.Number.ToString() ?? "--",
-                FormatTime(occupancy.ActualStart),
-                "",
-                false);
-
-            y += 25;
         }
     }
 
@@ -320,6 +484,47 @@ public sealed class MainGame : Game
         }
     }
 
+    private void DrawRouteTable()
+    {
+        const int top = 665;
+        Text("TRASA WYBRANEGO POCIĄGU", new Vector2(Left, top), Color.Black, .68f);
+
+        var train = SelectedTrain;
+        if (train is null)
+        {
+            Text("BRAK POCIĄGU — [A] DODAJ", new Vector2(Left, top + 30), Color.DimGray, .5f);
+            return;
+        }
+
+        Text($"{train.Number} | [N] dodaj stację | [P] STOP/PASS na ostatniej stacji pośredniej | [1-9] przypisz tor",
+            new Vector2(370, top + 4), Color.DimGray, .42f);
+
+        var y = top + 27;
+        DrawTableHeader(new Rectangle(Left, y, Right - Left, 30),
+            "LP", "STACJA", "TYP", "PRZYJAZD", "ODJAZD", "TOR", "SEKCJA");
+
+        y += 30;
+        for (var i = 0; i < train.Timetable.Take(7).Count(); i++)
+        {
+            var entry = train.Timetable[i];
+            var section = i < train.Timetable.Count - 1
+                ? FindSectionBetween(entry.StationId, train.Timetable[i + 1].StationId)
+                : null;
+
+            DrawTableRow(new Rectangle(Left, y, Right - Left, 25),
+                (i + 1).ToString(),
+                StationCode(entry.StationId),
+                entry.Kind.ToString().ToUpperInvariant(),
+                entry.Arrival,
+                entry.Departure,
+                entry.TrackId is Guid id ? TrackName(id) : "--",
+                section?.Number.ToString() ?? "--",
+                false);
+
+            y += 25;
+        }
+    }
+
     private void DrawFooter()
     {
         Rect(new Rectangle(0, 865, Width, 35), new Color(35, 35, 35));
@@ -345,15 +550,11 @@ public sealed class MainGame : Game
 
     private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
         string c5, string c6, string c7, string c8, bool warning)
-    {
-        DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8 }, warning);
-    }
+        => DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8 }, warning);
 
     private void DrawTableRow(Rectangle area, string c1, string c2, string c3, string c4,
         string c5, string c6, string c7, string c8, string c9, bool warning)
-    {
-        DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8, c9 }, warning);
-    }
+        => DrawTableRow(area, new[] { c1, c2, c3, c4, c5, c6, c7, c8, c9 }, warning);
 
     private void DrawTableRow(Rectangle area, string[] cells, bool warning)
     {
@@ -378,7 +579,7 @@ public sealed class MainGame : Game
         {
             9 => new[] { 90, 90, 180, 80, 80, 95, 105, 85, 130 },
             8 => new[] { 70, 150, 100, 100, 80, 80, 100, 600 },
-            7 => new[] { 100, 140, 100, 100, 80, 80, 600 },
+            7 => new[] { 70, 170, 120, 110, 110, 100, 600 },
             _ => Enumerable.Repeat((Right - Left) / Math.Max(1, count), count).ToArray()
         };
     }
@@ -396,12 +597,18 @@ public sealed class MainGame : Game
     private RailSection? FindSection(Guid id)
         => project.Lines.SelectMany(x => x.Sections).FirstOrDefault(x => x.Id == id);
 
-    private void Border(Rectangle r, Color color)
+    private RailSection? FindSectionBetween(Guid from, Guid to)
+        => project.Lines.SelectMany(x => x.Sections).FirstOrDefault(x =>
+            (x.FromStationId == from && x.ToStationId == to) ||
+            (x.FromStationId == to && x.ToStationId == from));
+
+    private static TimeSpan? ParseTime(string? value)
+        => TimeSpan.TryParse(value, out var time) ? time : null;
+
+    private static string FormatTime(TimeSpan time)
     {
-        Rect(new Rectangle(r.X, r.Y, r.Width, 1), color);
-        Rect(new Rectangle(r.X, r.Bottom - 1, r.Width, 1), color);
-        Rect(new Rectangle(r.X, r.Y, 1, r.Height), color);
-        Rect(new Rectangle(r.Right - 1, r.Y, 1, r.Height), color);
+        var totalHours = (int)time.TotalHours;
+        return $"{totalHours:00}:{time.Minutes:00}";
     }
 
     private static string Clip(string value, int width)
@@ -411,10 +618,12 @@ public sealed class MainGame : Game
         return value.Length <= max ? value : value[..Math.Max(0, max - 3)] + "...";
     }
 
-    private static string FormatTime(TimeSpan time)
+    private void Border(Rectangle r, Color color)
     {
-        var totalHours = (int)time.TotalHours;
-        return $"{totalHours:00}:{time.Minutes:00}";
+        Rect(new Rectangle(r.X, r.Y, r.Width, 1), color);
+        Rect(new Rectangle(r.X, r.Bottom - 1, r.Width, 1), color);
+        Rect(new Rectangle(r.X, r.Y, 1, r.Height), color);
+        Rect(new Rectangle(r.Right - 1, r.Y, 1, r.Height), color);
     }
 
     private void Rect(Rectangle r, Color color) => batch.Draw(pixel, r, color);
